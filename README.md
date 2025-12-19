@@ -1,6 +1,8 @@
 # Assembly: Agentic Narratives
 
-This is a basic setup with barebone scaffolding for agentic narrative explorations with continuous, semi-autonomous multimedia content generation. The prompts are intentionally minimal and should be enhanced and adapted to specific creative tasks.
+<p align='center'><img src='_out/035-f-306.jpg' /></p>
+
+This is a barebone setup with basic scaffolding for agentic narrative explorations with continuous, semi-autonomous multimedia content generation. The prompts are intentionally minimal and should be enhanced and adapted to specific creative tasks.
 
 The system uses LLM agents to orchestrate narrative generation, which feeds into a pipeline for image, video, and audio generation. 
 Visual generation uses [Runware.ai] cloud service for its optimal price/performance ratio. Audio generation uses [Chatterbox] text-to-speech and [MMAudio] video-to-audio methods (their codebases included in this repo).
