@@ -1,0 +1,44 @@
+{
+  "global_settings": {
+    "topic": "The discussion topic or thesis",
+    "constraints": "Debate guidelines and tone requirements",
+    "stop_cliches": ["phrases to avoid", "banned expressions"],
+    "focus_areas": [
+      "Specific aspects to explore",
+      "Questions to address"
+    ]
+  },
+  "personas": [
+    {
+      "name": "Persona name",
+      "gender": "f or m",
+      "role": "Principal role, features, and characteristics",
+      "look": "Visual appearance description for image generation",
+      "style": "Debate style and approach",
+      "strengths": ["strength1", "strength2"],
+      "blindspots": ["limitation1", "limitation2"],
+      "speaker": "TTS speaker ID (e.g., f-227)"
+    }
+  ],
+  "fragments": [
+    {
+      "fragment_number": 1,
+      "persona_name": "Persona name",
+      "content": "Elaborated inner thoughts for this turn - the detailed reasoning and argumentation before speaking"
+    }
+  ],
+  "voices": [
+    {
+      "fragment_number": 1,
+      "persona_name": "Persona name",
+      "content": "Condensed spoken remark - what the persona actually says aloud"
+    }
+  ],
+  "visuals": [
+    {
+      "fragment_number": 1,
+      "persona_name": "Persona name",
+      "content": "Visual description for image/video generation"
+    }
+  ]
+}

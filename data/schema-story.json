@@ -1,0 +1,69 @@
+{
+  "global_settings": {
+    "directives": "Summary of the findings and insights from the research phase",
+    "world": "Detailed world-building with location, time period, and atmosphere",
+    "locations": ["Location 1: its visual description", "Location 2: its visual description", ...],
+    "primary_tension": "Main narrative conflict"
+    "stop_cliches": ["List specific cliches to avoid, including visual, conceptual, and linguistic cliches",
+      "Examples: 'fractured', 'translucent', 'shimmering', 'flickering', 'glowing', 'neon', 'hologram', 'vortex', 'portals', 'impossible', 'infinite', etc."],
+  },
+  "global_actors": [
+    {
+      "name": "Actor name",
+      "type": "character/creature/entity/force/phenomenon",
+      "look": "Permanent visual traits and details",
+      "motivations": "Core drives and desires",
+      "background": "Compelling history and context",
+      "objectives": "Internal and external objectives and tensions"
+    }
+  ]
+  "chapters": [
+    {
+      "chapter_number": 1,
+      "chapter_title": "Chapter title",
+      "chapter_content": "Chapter outline as 5-8 major plot points"
+    }
+  ],
+  "scenes": [
+    {
+      "chapter_number": 1,
+      "chapter_title": "Chapter title",
+      "scene_number": 1,
+      "global_setting": "Specific setting within established world",
+      "global_actors": [
+        {"name": "Global actor 1", "look": "copied from global_actors.look"},
+        {"name": "Global actor 2", "look": "copied from global_actors.look"},
+        ...
+      ],
+      "local_settings": ["Any new local locations introduced"],
+      "local_actors": ["Any new local actors introduced"],
+      "scene_content": "Detailed scene with actor communication, action, description, and internal states",
+      "scene_purpose": "What this scene accomplishes for the chapter"
+    }
+  ]
+  "fragments": [
+    {
+      "chapter_number": 1,
+      "scene_number": 1,
+      "fragment_number": 1,
+      "content": "The narrative prose text for this fragment"
+    }
+  ],
+  "voices": [
+    {
+      "chapter_number": 1,
+      "scene_number": 1,
+      "fragment_number": 1,
+      "persona_name": "Character Name or Narrator",
+      "content": "Voice-over script (condensed from fragment)"
+    }
+  ],
+  "visuals": [
+    {
+      "chapter_number": 1,
+      "scene_number": 1,
+      "fragment_number": 1,
+      "content": "Visual description for image/video generation (extracted from fragment)"
+    }
+  ]
+}
