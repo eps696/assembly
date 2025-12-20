@@ -4,8 +4,8 @@
 
 This is a barebone setup with basic scaffolding for agentic narrative explorations with continuous, semi-autonomous multimedia content generation. The prompts are intentionally minimal and should be enhanced and adapted to specific creative tasks.
 
-The system uses LLM agents to orchestrate narrative generation, which feeds into a pipeline for image, video, and audio generation. 
-Visual generation uses [Runware.ai] cloud service for its optimal price/performance ratio. Audio generation uses [Chatterbox] text-to-speech and [MMAudio] video-to-audio methods (their codebases included in this repo).
+The system uses LLM agents to orchestrate narrative generation, which feeds into a pipeline for image, video, and audio synthesis. 
+Visual generation uses [Runware.ai] cloud service for its optimal price/performance ratio. Audio generation uses [Chatterbox] text-to-speech and [MMAudio] video-to-audio methods (code included in this repo).
 
 ## Backends
 
@@ -23,8 +23,11 @@ Visual generation uses [Runware.ai] cloud service for its optimal price/performa
 
 ## Internal Features
 
-**Async State Management** (`base.py`)
-Asynchronous processing and thread-safe state handling with JSON persistence. Supports incremental merging of agent outputs and automatic checkpointing after each step. The `StoryState` class handles concurrent access and ensures data consistency across async operations.
+**Async Processing** (`base.py`)
+All time-consuming operations (LLM calls, TTS, image/video generation, audio mixing) run asynchronously, enabling concurrent execution and responsive pipeline flow.
+
+**State & Context Management** (`base.py`, `author.py`, `chat.py`)
+Centralized state with JSON persistence serves as working memory. Context for each agent call is selectively composed from relevant state portions, ensuring optimal size and actuality for the task at hand.
 
 **QA Evaluation Loop** (`--evals N`)
 Each agent call can be followed by an evaluation pass using a separate LLM call. The evaluator scores the output and provides feedback; if not approved, the agent retries with the feedback incorporated. This significantly improves output quality at the cost of additional API calls.

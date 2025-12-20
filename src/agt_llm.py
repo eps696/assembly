@@ -60,7 +60,7 @@ class AgentLLM:
             if eval_result.get('evaluation', eval_result).get('status') == 'APPROVED': 
                 break
             inputs = {**orig_inputs, 'previous_feedback': eval_result.get('evaluation', eval_result).get('feedback', '')}
-            if self.verbose: print(f".. {eval_result['evaluation']['feedback']}")
+            if self.verbose: print(f".. {eval_result.get('evaluation', eval_result).get('feedback')}")
 
         if save:
             await self.state.merge_data(result)
