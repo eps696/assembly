@@ -25,11 +25,12 @@ trans_en = GoogleTranslator(source='auto', target='en')
 
 def base_args(parser=None):
     if parser is None: parser = argparse.ArgumentParser(conflict_handler = 'resolve')
-    parser.add_argument('-a',   '--agent',    default='lms', help='lms or adk')
-    parser.add_argument('-txt', '--txtonly',  action='store_true', help='Text-only mode')
+    parser.add_argument('-t',   '--in_txt',   default=None, help='Text string or file for the topic')
     parser.add_argument('-json','--load_json',default=None, help="Load JSON to continue")
     parser.add_argument('-arg', '--load_args',default=None, help="Load saved config")
+    parser.add_argument('-a',   '--agent',    default='lms', help='lms or adk')
     parser.add_argument('-qa',  '--evals',    default=0, type=int, help="Count of QA evaluation runs for every agent")
+    parser.add_argument('-txt', '--txtonly',  action='store_true', help='Text-only mode')
     parser.add_argument('-try', '--max_tries',default=3, type=int, help="Count of generation attempts if failed")
     # paths
     parser.add_argument('-o',    '--out_dir', default="_out", help="Output directory for generated media")

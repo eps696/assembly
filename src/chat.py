@@ -12,7 +12,6 @@ from util import Tm, filter_items, fnexist, rand_pick, load_args, file_list, sav
 
 def get_args(parser=None):
     if parser is None: parser = argparse.ArgumentParser(conflict_handler = 'resolve')
-    parser.add_argument('-t',  '--in_txt',  default=None, help='Text string or file to process')
     parser.add_argument(       '--maxmsg',  default=6, type=int, help='Amount of recent fragments for context')
     parser.add_argument(       '--updmsg',  default=8, type=int, help='Update personas every N fragments')
     parser.add_argument('-n',  '--num',     default=999, type=int, help='Number of fragments to generate')

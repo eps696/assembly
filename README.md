@@ -49,10 +49,10 @@ The LMStudio agent automatically recovers from malformed tool calls - common wit
 
 ```
 # Text-only generation
-python src/author.py -txt
+python src/author.py -txt ...
 
 # Generation with sound and visuals
-python src/author.py -vt runware -imod "bfl:5@1" -isz 1344-752 -vmod "bytedance:2@2" -vsz 864-480 -fps 24 -iref 8
+python src/author.py -vt runware -imod "bfl:5@1" -isz 1344-752 -vmod "bytedance:2@2" -vsz 864-480 -fps 24 -iref 8 ...
 
 # Resume from saved state and config
 python src/author.py -json _out/log.json -arg _out/config.txt 
@@ -122,6 +122,9 @@ python src/readlog.py -i _out/log.json -o discussion.txt
 ```
 
 ## Key Arguments
+
+- `-t/--in_txt` - topic starter (text or filename)
+- `-docd/--doc_dir` - optional documents to build the narrative on
 
 - `-a/--agent` - Agent type: `lms` (LMStudio/OpenAI) or `adk` (Google ADK)
 - `-tmod/--txt_model` - LLM model name
