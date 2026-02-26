@@ -12,36 +12,38 @@ import inspect
 from typing import get_type_hints
 from functools import wraps
 
+# Tool registry: name → {fn, openai, claude}
 _tools = {}
 
 def tool(func):
-    """Register function as agentic tool, auto-generate OpenAI schema from signature/docstring."""
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        return func(*args, **kwargs)
-    
+    """Register function as agentic tool, auto-generate OpenAI and Claude schemas from signature/docstring"""
     sig = inspect.signature(func)
     hints = get_type_hints(func)
     doc = inspect.getdoc(func) or ""
     
     props, req = {}, []
-    for name, param in sig.parameters.items():
+    for pname, param in sig.parameters.items():
         if param.kind in (param.VAR_POSITIONAL, param.VAR_KEYWORD): continue
-        ptype = hints.get(name, str)
+        ptype = hints.get(pname, str)
         schema = {"type": {"str": "string", "int": "integer", "float": "number", "bool": "boolean"}.get(ptype.__name__, "string")}
         for line in doc.split('\n'):
-            if line.strip().startswith(f"{name}:"):
+            if line.strip().startswith(f"{pname}:"):
                 schema["description"] = line.split(':', 1)[1].strip()
                 break
-        props[name] = schema
-        if param.default is param.empty: req.append(name)
+        props[pname] = schema
+        if param.default is param.empty: req.append(pname)
     
-    _tools[func.__name__] = {"type": "function", "function": {
-        "name": func.__name__, 
-        "description": doc.split('\n')[0] if doc else f"Execute {func.__name__}",
-        "parameters": {"type": "object", "properties": props, "required": req}
-    }}
-    return wrapper
+    name = func.__name__
+    desc = doc.split('\n')[0] if doc else f"Execute {name}"
+    params = {"type": "object", "properties": props, "required": req}
+    
+    _tools[name] = {
+        "fn": func,
+        "openai": {"type": "function", "function": {"name": name, "description": desc, "parameters": params}},
+        "claude": {"name": name, "description": desc, "input_schema": params},
+        "lang": {"func": func, "name": name, "description": desc}
+    }
+    return func
 
 
 def bool_(x):
@@ -53,7 +55,25 @@ def int_(x, default):
         return default
 
 @tool
-def get_current_time(*args, **kwargs):
+def count_text(text: str):
+    """Count the number of letters and words in the provided text.
+    text: The text to analyze
+    """
+    try:
+        letter_count = sum(c.isalpha() for c in text)
+        word_count = len(text.split())
+        
+        return {
+            "status": "success",
+            "letters": letter_count,
+            "words": word_count,
+            "summary": f"Text contains {letter_count} letters and {word_count} words"
+        }
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+@tool
+def get_current_time():
     """Getting the current system time with timezone information."""
     try:
         current_time = datetime.now()
@@ -114,8 +134,9 @@ async def search_async(query, count=10, offset=0): # max 20, offset for paginati
     except Exception as e:
         raise Exception(f"Search failed: {str(e)}")
 
-# @tool
-def brave_search(query: str, count: int = 10, offset: int = 0, *args, **kwargs): # max 20, offset for pagination
+@tool
+# brave_search
+def search(query: str, count: int = 10, offset: int = 0): # max 20, offset for pagination # , *args, **kwargs
     """Performing a web search using the Brave Search API.
     
     query: Search query (max 400 chars, 50 words)
@@ -229,7 +250,7 @@ async def fetch_url_content_async(url, max_length=32000, start_index=0, raw=Fals
         return {"status": "error", "message": str(e)}
 
 @tool
-def fetch_url_content(url: str, max_length: int = 100000, start_index: int = 0, raw: bool = False, check_robots: bool = False, *args, **kwargs):
+def fetch_url_content(url: str, max_length: int = 100000, start_index: int = 0, raw: bool = False, check_robots: bool = False): # , *args, **kwargs
     """Fetching content from a URL and converting to markdown when possible.
     
     url: The URL to fetch content from
@@ -243,7 +264,33 @@ def fetch_url_content(url: str, max_length: int = 100000, start_index: int = 0, 
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
-toolset = list(_tools.values())
+# --- Public API for tool consumers ---
+
+def get_schemas(fmt):
+    """Return tool schemas in 'openai' or 'claude' format. fmt: 'openai' | 'claude'"""
+    return [t[fmt] for t in _tools.values()]
+
+def get_schema(name, fmt):
+    """Return single tool schema by name."""
+    return _tools[name][fmt] if name in _tools else None
+
+def execute(name, args):
+    """Dispatch a tool call by name. Returns result dict."""
+    if name not in _tools:
+        return {"error": f"Unknown tool: {name}"}
+    try:
+        result = _tools[name]["fn"](**args)
+        return result if isinstance(result, dict) else {"result": result}
+    except Exception as e:
+        return {"error": f"Error in {name}: {e}"}
+
+def names():
+    """Return list of registered tool names."""
+    return list(_tools.keys())
+
 
 if __name__ == "__main__":
-    for x in toolset: print(x)
+    print("=== OpenAI Tools ===")
+    for x in get_schemas('openai'): print(x)
+    print("\n=== Claude Tools ===")
+    for x in get_schemas('claude'): print(x)

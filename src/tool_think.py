@@ -1,27 +1,32 @@
-from tools import bool_, int_, tool, _tools
+from tools import bool_, int_, tool
 
 class ThinkingServer:
     def __init__(self):
         self.thoughts = []
-        self.branches = {}
+        self.branches = {}  # Map of branch_id to list of thoughts in that branch
         self.local_mode = False
     
     def add_thought(self, thought, thought_num=None, total_thoughts=None, next_thought_needed=True,
                     is_revision=False, revises_thought=None, branch_from_thought=None, branch_id=None, needs_more_thoughts=False):
+        # Validation
         if is_revision and revises_thought is None:
             raise ValueError("revises_thought must be provided when is_revision is True")
         if branch_from_thought is not None and branch_id is None:
             raise ValueError("branch_id must be provided when branch_from_thought is specified")
 
+        # Auto-numbering: don't trust small LLMs to track sequence correctly
         actual_thought_num = len(self.thoughts) + 1
 
+        # Detect new problem: LLM says thought_num=1 but we already have thoughts
         is_new_problem = (thought_num == 1 and len(self.thoughts) > 0 and not self.local_mode)
         if is_new_problem:
-            actual_thought_num = 1
+            actual_thought_num = 1  # Reset numbering for new problem context
 
+        # Use LLM's total_thoughts as estimate, but ensure it's at least current position
         if total_thoughts is None or total_thoughts < actual_thought_num:
             total_thoughts = actual_thought_num
 
+        # Auto-detect branch continuation: if previous thought was in a branch, continue it
         current_branch_id = branch_id
         current_branch_from = branch_from_thought
         if current_branch_id is None and not is_revision and len(self.thoughts) > 0:
@@ -33,7 +38,7 @@ class ThinkingServer:
         thought_obj = {
             "thought": thought,
             "thought_num": actual_thought_num,
-            "thought_num_from_llm": thought_num, # keep for debugging
+            "thought_num_from_llm": thought_num,  # Keep LLM's value for debugging
             "total_thoughts": total_thoughts,
             "next_thought_needed": next_thought_needed,
             "is_revision": is_revision,
@@ -45,6 +50,7 @@ class ThinkingServer:
         }
         self.thoughts.append(thought_obj)
 
+        # Track branch membership
         if current_branch_id:
             if current_branch_id not in self.branches:
                 self.branches[current_branch_id] = []
@@ -112,7 +118,12 @@ def sequential_thinking(thought: str, next_thought_needed: bool=True, thought_nu
         branch_id=parsed_branch_id,
         needs_more_thoughts=bool_(needs_more_thoughts)
     )
-    return result
+    # Format result with human-readable content for LLM tool response
+    return {
+        "status": "success",
+        "content": f"Thought #{thought_num or 1}: {thought}",
+        "thought_details": result['thought']
+    }
 
 def get_thoughts():
     return server.get_thoughts()
@@ -138,17 +149,20 @@ def print_thoughts(start_index=0, end_index=None, show_branch_info=True):
     print(f"\n--- Thinking ({total_in_range} total):")
 
     branches = get_branches()
-    branch_displayed = {}
+    branch_displayed = {}  # Track which thoughts have been displayed with branch info
 
     for i, t in enumerate(selected_thoughts):
         type_str = ""
 
+        # Mark new problem boundaries
         if t.get("is_new_problem", False):
             type_str = " [NEW PROBLEM]"
 
+        # Show revision info
         if t.get("is_revision", False):
             revised_num = t.get("revises_thought")
             type_str += f" (REVISION of step {revised_num})"
+        # Show branch info (but not for revisions)
         elif t.get("branch_id"):
             branch_from = t.get("branch_from_thought")
             branch_id = t.get("branch_id")
@@ -158,6 +172,7 @@ def print_thoughts(start_index=0, end_index=None, show_branch_info=True):
             else:
                 type_str += f" (Branch: {branch_id})"
 
+        # Display with auto-managed thought_num
         print(f"\n- {t['thought_num']}/{total_in_range}{type_str}: {t['thought']}")
 
     if show_branch_info and branches:
@@ -168,7 +183,6 @@ def print_thoughts(start_index=0, end_index=None, show_branch_info=True):
             origin = branch_thoughts[0].get("branch_from_thought", "unknown")
             print(f"- '{branch_id}': {branch_count} thoughts, from step {origin}, steps {thought_nums}")
 
-toolset_think = list(_tools.values())
-
 if __name__ == "__main__":
-    for x in toolset_think: print(x)
+    from tools import get_schemas
+    for x in get_schemas('openai'): print(x)

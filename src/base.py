@@ -17,25 +17,26 @@ from deep_translator import GoogleTranslator
 from langdetect import detect
 from langchain_community.document_loaders import TextLoader, PyPDFLoader, UnstructuredWordDocumentLoader, UnstructuredPowerPointLoader
 
-from api_runware import Censored
+from api_runware import IMAGE_CONFIG, VIDEO_CONFIG, Censored
 
-from util import basename, file_list
+from util import basename, file_list, txt_clean
 
 trans_en = GoogleTranslator(source='auto', target='en')
+TTS_SR = 24000
 
 def base_args(parser=None):
     if parser is None: parser = argparse.ArgumentParser(conflict_handler = 'resolve')
+    parser.add_argument('-a',   '--agent',    default='lms', choices=['lms','adk','claude','langchain'], help='Agent backend')
     parser.add_argument('-t',   '--in_txt',   default=None, help='Text string or file for the topic')
     parser.add_argument('-json','--load_json',default=None, help="Load JSON to continue")
     parser.add_argument('-arg', '--load_args',default=None, help="Load saved config")
-    parser.add_argument('-a',   '--agent',    default='lms', help='lms or adk')
-    parser.add_argument('-qa',  '--evals',    default=0, type=int, help="Count of QA evaluation runs for every agent")
+    parser.add_argument('-evs', '--evals',    default=0, type=int, help="Count of QA evaluation runs for every agent")
     parser.add_argument('-txt', '--txtonly',  action='store_true', help='Text-only mode')
     parser.add_argument('-try', '--max_tries',default=3, type=int, help="Count of generation attempts if failed")
     # paths
     parser.add_argument('-o',    '--out_dir', default="_out", help="Output directory for generated media")
     parser.add_argument('-insd', '--ins_dir', default='data/prompts', help='Instructions directory')
-    parser.add_argument('-docd', '--doc_dir', default=None, help='Documents directory')
+    parser.add_argument('-docs', '--docs',    default=None, help='Source documents')
     parser.add_argument('-tsdd', '--tts_dir', default='models/chatter', help='TTS models directory')
     parser.add_argument('-sndd', '--sound_dir', default='models/mmaudio', help='Sound models directory')
     # vis gen
@@ -52,17 +53,34 @@ def base_args(parser=None):
     parser.add_argument('--runware_api_key', default=None)
     parser.add_argument('--poll_interval', default=2.0, type=float)
     parser.add_argument('--poll_timeout', default=300, type=int)
+    # Backend-specific args (each backend uses what it needs)
+    parser.add_argument('--db_url', default=None, help='[ADK] Database URL')
+    parser.add_argument('--cld_cache', default=True, action='store_true', help='[Claude] Prompt caching')
+    parser.add_argument('--use_thinking', default=False, action='store_true', help='[Claude] Extended thinking')
+    parser.add_argument('--thinking_budget', default=5000, type=int, help='[Claude] Thinking budget')
+    parser.add_argument('--use_graph',  action='store_true', help='[LangChain] Use LangChain message loop or LangGraph StateGraph with checkpointer')
     return parser
 
-TTS_SR = 24000
+def get_agent(state, a, defs):
+    """Factory function to create the appropriate agent backend"""
+    if a.agent == 'lms':
+        from agt_llm import AgentLLM
+        return AgentLLM(state, a, a.ins_dir)
+    elif a.agent == 'adk':
+        from agt_adk import AgentADK
+        return AgentADK(state, a, a.ins_dir, defs, db_url=getattr(a, 'db_url', None))
+    if a.agent == 'claude':
+        from agt_claude import AgentClaude
+        return AgentClaude(state, a, a.ins_dir, defs)
+    elif a.agent == 'langchain':
+        from agt_lang import AgentLang
+        return AgentLang(state, a, a.ins_dir, defs)
+    else:
+        raise ValueError(f"Unknown agent type: {a.agent}")
 
 def astr2caps(text):
     """Convert asterisk-wrapped text to uppercase"""
     return re.sub(r'\*([^*]+)\*', lambda m: m.group(1).upper(), text)
-
-def txt_clean(txt):
-    """Sanitize text for filenames"""
-    return ''.join(e for e in txt.replace(' ', '_') if (e.isalnum() or e in ['_','-']))
 
 def time2frames(seconds, fps=25, type='comfy'):
     """Convert seconds to frame count for different backends"""
@@ -184,7 +202,7 @@ class StoryState:
 
 def load_docs(src, copy=None):
     docs = []
-    filelist = file_list(src) if os.path.isdir(src) else [src] if os.path.isfile(src) else src if os.path.isfile(src) else []
+    filelist = file_list(src) if os.path.isdir(src) else [src] if os.path.isfile(src) else []
     if copy: 
         os.makedirs(copy, exist_ok=True)
         for f in filelist: shutil.copy2(f, os.path.join(copy, os.path.basename(f)))
@@ -211,10 +229,7 @@ def load_docs(src, copy=None):
 def mix_img_wav(img, wav, out_path, size, bitrate=None, fps=None, tts_sr=TTS_SR, timeout=60):
     """Create video from image + audio using ffmpeg"""
     command = ['ffmpeg', '-y', '-v', 'error', '-hwaccel', 'cuda']
-    if fps is None:
-        command.extend(['-loop', '1'])
-    else:
-        command.extend(['-r', str(fps)])
+    command.extend(['-loop', '1', '-framerate', str(fps or 25)]) # loop image and specify framerate before input
     command.extend(['-i', img, '-i', wav, '-c:v', 'h264_nvenc', '-preset', 'medium'])
     if bitrate is not None:
         command.extend(['-b:v', f'{bitrate}M'])
@@ -276,12 +291,13 @@ class MediaGen:
             name, look = subject.get('name', ''), subject.get('look', '')
         return name, look
 
-    async def gen_ref_(self, subject, type):
+    async def gen_ref_(self, subject, type, ref_dir=None):
         """Generate reference image for subject"""
         name, look = self.descript_(subject)
         if not name: return
 
-        ref_dir = os.path.join(self.a.out_dir, 'refs')
+        if ref_dir is None: 
+            ref_dir = os.path.join(self.a.out_dir, 'refs')
         fname = os.path.join(ref_dir, '%s-%s' % (type, txt_clean(name)))
         if os.path.exists(fname + '-rw.png'):
             self.refs[name] = fname + '-rw.png'
@@ -399,7 +415,7 @@ class MediaGen:
                 await asyncio.to_thread(mix_mov_wav, mov_path, wav_path, out_path)
             else:
                 img_for_video = img_path['path'] if isinstance(img_path, dict) else img_path
-                await asyncio.to_thread(mix_img_wav, img_for_video, wav_path, out_path, size=self.a.vid_size)
+                await asyncio.to_thread(mix_img_wav, img_for_video, wav_path, out_path, size=self.a.vid_size, fps=self.a.fps)
             return output
 
             return {"status": "success", "video_path": out_path}

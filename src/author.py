@@ -2,11 +2,9 @@
 import os
 import json
 import asyncio
-import shutil
 import argparse
-from pathlib import Path
 
-from base import MediaGen, StoryState, DurationError, load_docs, base_args, sdfu_args
+from base import MediaGen, StoryState, DurationError, get_agent, load_docs, base_args
 from util import Tm, filter_items, max_num, fnexist, rand_pick, file_list, save_cfg
 
 def get_args(parser=None):
@@ -213,13 +211,8 @@ async def main():
         await mediagen.init_vis()
 
     # Select agent backend
-    if 'adk' in a.agent:
-        from agt_adk import AgentADK
-        ai = AgentADK(state, a, a.ins_dir, agent_defs, db_url)
-    elif 'lms' in a.agent:
-        from agt_llm import AgentLLM
-        ai = AgentLLM(state, a, a.ins_dir)
-    print(tm.do('setup'))
+    ai = get_agent(state, a, agent_defs)
+    print(tm.do(f'.. {a.agent} setup'))
 
     # Init story
     if state.data['global_settings'] and state.data['global_actors']:

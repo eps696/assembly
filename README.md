@@ -11,13 +11,15 @@ Visual generation uses [Runware.ai] cloud service for its optimal price/performa
 
 ### Agent Types
 
-- **LMStudio Agent** (`agt_llm.py`) - OpenAI-compatible API for local models (Llama, Qwen, Mistral, etc.) via [LMStudio] or cloud (GPT-5, GPT-4o-mini; API key required). Supports tool calling with automatic malformed JSON recovery.
+- **LMStudio Agent** (`agt_llm.py`) - OpenAI-compatible API for local models (Llama, Qwen, Mistral, etc.) via [LMStudio] or cloud (GPT-5, GPT-4o-mini; API key required). Supports custom tool calling with automatic malformed JSON recovery.
 - **Google ADK Agent** (`agt_adk.py`) - Native Gemini integration via Google's [Agent Development Kit] (API key required). Supports Google Search as a built-in tool.
+- **Claude SDK Agent** (`agt_claude.py`) - Native Claude integration via Anthropic API (key required). Supports custom tool calling.
+- **LangChain/LangGraph Agent** (`agt_lang.py`) - LangChain implementation with optional graph-based execution on LangGraph (API key required). Supports custom tool calling.
 
 ### Media Generation
 
-- **Text-to-Image (T2I)** via [Runware API] (cloud, API key required) - Flux, Imagen, HiDream models. 
-- **Image-to-Video (I2V)** via [Runware API] (cloud, API key required) - Seedance, Veo models
+- **Text-to-Image (T2I)** via [Runware API] (cloud, API key required) - Flux, Imagen, GPT, NanoBanana, HiDream, etc. 
+- **Image-to-Video (I2V)** via [Runware API] (cloud, API key required) - Seedance, Kling, Veo, and others
 - **Text-to-Speech (TTS)** via [ChatterBox] (local) - Multi-speaker neural TTS with voice cloning
 - **Audio Mixing** via [MMAudio] (local) - Video-to-audio generation
 
@@ -33,7 +35,7 @@ Centralized state with JSON persistence serves as working memory. Context for ea
 Each agent call can be followed by an evaluation pass using a separate LLM call. The evaluator scores the output and provides feedback; if not approved, the agent retries with the feedback incorporated. This significantly improves output quality at the cost of additional API calls.
 
 **Built-in Agentic Tools** (`tools.py`)
-- `brave_search` - Web search via Brave Search API for grounding with current information
+- `search` - Web search via Brave Search API for grounding with current information
 - `fetch_url_content` - URL fetching with automatic HTML-to-markdown conversion
 - `@tool` decorator - Auto-generates OpenAI-compatible tool schemas from function signatures and docstrings
 
@@ -116,6 +118,12 @@ Both workflows save state to `log.json` after each step, enabling resume from an
 # Use Gemini via Google ADK
 ... -a adk -tmod gemini-2.5-flash
 
+# Use Claude via Anthropic SDK
+... -a claude -tmod claude-sonnet-4-6
+
+# Use LangChain/LangGraph
+... -a langchain -tmod gpt-4o-mini
+
 # Extract discussion transcript
 python src/readlog.py -i _out/log.json -o discussion.txt
 
@@ -124,20 +132,25 @@ python src/readlog.py -i _out/log.json -o discussion.txt
 ## Key Arguments
 
 - `-t/--in_txt` - topic starter (text or filename)
-- `-docd/--doc_dir` - optional documents to build the narrative on
+- `-docs` - optional documents to build the narrative on
 
-- `-a/--agent` - Agent type: `lms` (LMStudio/OpenAI) or `adk` (Google ADK)
+- `-a/--agent` - Agent type: `lms` (LMStudio/OpenAI), `adk` (Google ADK), `claude` (Anthropic), `langchain` (LangChain/LangGraph)
 - `-tmod/--txt_model` - LLM model name
 - `-lh/--llm_host` - LMStudio server host
 - `-json/--load_json` - Resume from JSON state file
 
 - `-vt/--vis_type` - Visual backend: runware, comfy, wan, walk
-- `-imod/--img_model` - Image model (e.g., bfl:5@1 for Flux 2 Pro)
-- `-vmod/--vid_model` - Video model (e.g., bytedance:2@2 for Seedance Pro Fast)
+- `-imod/--img_model` - Image model (e.g., `flux` for Flux 2 Pro)
+- `-vmod/--vid_model` - Video model (e.g., `seedprof` for Seedance Pro Fast)
 - `-isz/--img_size` - Image dimensions (e.g., 1344-752)
 - `-vsz/--vid_size` - Video dimensions (e.g., 864-480)
 - `-fps` - Video framerate
 - `-iref/--img_refs` - Number of reference images for consistency
+
+- `--cld_cache` - Enable prompt caching (Claude backend)
+- `--use_thinking` - Enable extended thinking (Claude backend)
+- `--use_graph` - Use LangGraph execution (LangChain backend)
+- `--db_url` - Database URL for persistent sessions (ADK/LangGraph backends)
 
 - `-txt/--txtonly` - Text-only mode, skip media
 - `-o/--out_dir` - Output directory (default: _out)
@@ -153,6 +166,8 @@ assembly/
 │   ├── base.py             # Infrastructure (MediaGen, StoryState, PromptMan, etc.)
 │   ├── agt_llm.py          # LMStudio/OpenAI agent with tool calling
 │   ├── agt_adk.py          # Google ADK (Gemini) agent
+│   ├── agt_claude.py       # Anthropic Claude agent
+│   ├── agt_lang.py         # LangChain/LangGraph agent
 │   ├── tools.py            # Tool system
 │   ├── tool_think.py       # Sequential thinking tool for small LLMs
 │   ├── api_runware.py      # Runware cloud integration (T2I, I2V)

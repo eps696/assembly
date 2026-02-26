@@ -6,10 +6,14 @@ import re
 from openai import AsyncOpenAI
 
 from base import PromptMan, parse_json
-from tools import toolset
-from tool_think import toolset_think, sequential_thinking, print_thoughts
-toolsets = []
-[toolsets.append(d) for d in toolset + toolset_think if d not in toolsets]
+from tools import get_schemas, get_schema, execute as call_tool
+from tool_think import print_thoughts # registers sequential_thinking into _tools on import
+toolsets = get_schemas('openai') # after all necessary tools are imported!
+
+# from tools import toolset
+# from tool_think import toolset_think, sequential_thinking, print_thoughts
+# toolsets = []
+# [toolsets.append(d) for d in toolset + toolset_think if d not in toolsets]
 
 # Tags for detecting malformed tool calls in text
 TOOL_TAGS = ['[TOOL_REQUEST]', '[END_TOOL_REQUEST]', '[TOOL_CALL]', '[END_TOOL_CALL]',
@@ -39,29 +43,37 @@ class AgentLLM:
         self.client.top_p = 0.9
         self.client.set_model(args.txt_model)
 
-    async def call_agent(self, inputs, prompt_name, checkout=None, save=True, evals=0):
+    async def call_agent(self, inputs, prompt_name, checkout=None, save=True, evals=0, loose_eval=False):
         """Call LLM with prompt. evals > 0 enables QA evaluation loop."""
         if evals == 0: evals = self.evals
         instruction = self.prompter.get_prompt(prompt_name)
         orig_inputs = {k: v for k, v in inputs.items()}
+        feedbacks, best, best_score = [], None, -1
 
         for attempt in range(max(1, evals + 1)):
             result = None
             while result is None: # retry until valid JSON
-                result = await self._ask(instruction, inputs, toolset)
+                result = await self._ask(instruction, inputs, toolsets)
                 if result and checkout:
                     try: result[checkout][0].keys()
                     except: result = None
-            if evals == 0 or attempt >= evals: 
+            if not evals:
                 break
             # Evaluate
-            in_dict = {"instruction": instruction, "inputs": orig_inputs, "output": result}
-            eval_result = await self._ask(self.prompter.get_prompt('eval'), in_dict) or {}
-            if eval_result.get('evaluation', eval_result).get('status') == 'APPROVED': 
+            eval_in = {"instruction": instruction, "output": result}
+            if not loose_eval: eval_in = {**eval_in, "inputs": orig_inputs}
+            eval_result = await self._ask(self.prompter.get_prompt('eval'), eval_in, [get_schema('count_text', 'openai')]) or {}
+            ev = eval_result.get('evaluation', eval_result)
+            score = ev.get('score', 0)
+            if score > best_score: best, best_score = result, score
+            if ev.get('status') == 'APPROVED' or attempt >= evals: 
                 break
-            inputs = {**orig_inputs, 'previous_feedback': eval_result.get('evaluation', eval_result).get('feedback', '')}
-            if self.verbose: print(f".. {eval_result.get('evaluation', eval_result).get('feedback')}")
+            if fb := ev.get('feedback', ''):
+                feedbacks.append(f"[Attempt {attempt + 1}] {fb}")
+                inputs = {**orig_inputs, 'previous_feedbacks': '\n'.join(feedbacks)}
+                if self.verbose: print(f".. score {score}, {fb}")
 
+        if best is not None: result = best
         if save:
             await self.state.merge_data(result)
             await self.state.save()
@@ -194,20 +206,11 @@ class LLM:
             func_name = tc.function.name
             try:
                 func_args = json.loads(tc.function.arguments) if tc.function.arguments.strip() else {}
-                result = globals()[func_name](**func_args)
+                result = call_tool(func_name, func_args)
 
-                if func_name == "sequential_thinking":
-                    tool_content = json.dumps({
-                        "status": "success",
-                        "content": f"Thought #{func_args.get('thought_num', 1)}: {func_args.get('thought', '')}",
-                        "thought_details": result['thought']
-                    })
-                elif isinstance(result, dict) and "status" in result:
+                if isinstance(result, dict) and "status" in result:
                     if verbose: print(f' -tool- {result["status"]}: {str(result.get("content", ""))[:100]}')
-                    tool_content = json.dumps(result)
-                else:
-                    if verbose: print(f' -tool- unparsed: {result}')
-                    tool_content = json.dumps(result)
+                tool_content = json.dumps(result)
 
                 result_msgs.append({"role": "tool", "content": tool_content, "tool_call_id": tc.id})
 
@@ -325,7 +328,7 @@ def _extract_tool_calls(content):
 
 async def chat(host='localhost', model=None):
     """Simple interactive chatbot"""
-    prompter = PromptMan('src/prompts/chat')
+    prompter = PromptMan('data/prompts/chat')
     client = LLM(host=host)
 
     models = await client.get_models()
@@ -360,7 +363,7 @@ async def chat(host='localhost', model=None):
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('-lh', '--host', default='localhost', help='LMStudio host')
+    parser.add_argument('-lh', '--host', default='localhost', help='LLM server host')
     parser.add_argument('-m', '--model', default=None, help='Model name')
     args = parser.parse_args()
 

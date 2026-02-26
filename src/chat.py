@@ -3,11 +3,10 @@ import os
 import sys
 import json
 import asyncio
-import shutil
 import argparse
 from itertools import cycle
 
-from base import MediaGen, StoryState, DurationError, load_docs, base_args
+from base import MediaGen, StoryState, DurationError, get_agent, load_docs, base_args
 from util import Tm, filter_items, fnexist, rand_pick, load_args, file_list, save_cfg
 
 def get_args(parser=None):
@@ -43,6 +42,10 @@ async def gen_debate(idx, a, ai, state, mediagen=None, cur_vis_prev=[]):
     tm = Tm()
     do_media = not a.txtonly and mediagen is not None
 
+    ctx_cache = {}
+    if a.agent == 'claude' and a.cld_cache: # personas/settings stay stable across calls
+        ctx_cache = {'context': {"global_settings": state.data["global_settings"]}}
+
     # track last persona for non-repeat selection
     last_persona_name = state.data["fragments"][-1].get("persona_name") if state.data["fragments"] else None
     last_persona = next((p for p in state.data["personas"] if p["name"] == last_persona_name), None)
@@ -54,11 +57,12 @@ async def gen_debate(idx, a, ai, state, mediagen=None, cur_vis_prev=[]):
         recent_frags = state.data["fragments"][-a.maxmsg:] if state.data["fragments"] else [] # context = last K thoughts
         # recent_frags = state.data["voices"][-a.maxmsg:] if state.data["voices"] else [] # context = last K sayings
         cur_input = {
-            "global_settings": state.data["global_settings"],
             "fragment_number": idx,
             "persona": persona,
             "recent_fragments": recent_frags
         }
+        if not (a.agent=='claude' and a.cld_cache):
+            cur_input["global_settings"] = state.data["global_settings"]
         cur_frag = await ai.call_agent(cur_input, 'writ-frag', 'fragments')
     else:
         persona_name = cur_frag[0].get("persona_name") # from existing fragment
@@ -74,43 +78,42 @@ async def gen_debate(idx, a, ai, state, mediagen=None, cur_vis_prev=[]):
     if not fnexist(fmask, 'mp4'):
 
         # voice-over
-        voc_result = None
-        for voc_attempt in range(a.max_tries):
-            cur_voc = filter_items(state.data["voices"], fragment_number=idx)
-            if voc_attempt > 0 or not cur_voc:
-                cur_input = {"fragment": cur_frag, "persona": persona, "fragment_number": idx}
-                cur_voc = await ai.call_agent(cur_input, 'writ-voc', 'voices')
-            cur_voc = cur_voc[0]
-            if a.verbose: print(tm.do('voice'))
-            # tts
-            if do_media:
-                try:
-                    voc_result = await mediagen.gen_voice(fname, cur_voc['content'], speakr)
-                    if a.verbose: print(tm.do('tts'))
-                    break # success
-                except DurationError as e:
-                    if voc_attempt < a.max_tries - 1:
-                        if a.verbose: print(f"!! invalid duration, remaking voice-over (attempt {voc_attempt+1}/{a.max_tries})...")
-                    else:
-                        print(f"!! wrong duration after {a.max_tries} attempts, skipping fragment")
-                        voc_result = {"status": "error", "message": str(e)}
-                        break
-            else: break
-
+        async def gen_voc():
+            """Generate voice-over text with TTS retry loop"""
+            for voc_attempt in range(a.max_tries):
+                cur_voc = filter_items(state.data["voices"], fragment_number=idx)
+                if voc_attempt > 0 or not cur_voc:
+                    cur_input = {"fragment": cur_frag, "persona": persona, "fragment_number": idx}
+                    cur_voc = await ai.call_agent(cur_input, 'writ-voc', 'voices')
+                cur_voc = cur_voc[0]
+                # tts
+                if do_media:
+                    try:
+                        voc_result = await mediagen.gen_voice(fname, cur_voc['content'], speakr) # generate voiceover
+                        return voc_result
+                    except DurationError as e:
+                        if voc_attempt < a.max_tries - 1:
+                            if a.verbose: print(f"!! invalid duration, retry voice-over ({voc_attempt+1}/{a.max_tries})...") # {e}
+                        else:
+                            print(f"!! wrong duration after {a.max_tries} attempts, skipping fragment")
+                            return {"status": "error", "message": str(e)}
+                else: return None
+            return None
         # visual
-        cur_vis = filter_items(state.data["visuals"], fragment_number=idx)
-        if not cur_vis:
-            cur_input = {
-                "global_settings": state.data["global_settings"],
-                "fragment_number": idx,
-                "fragment": cur_frag,
-                "persona": persona
-            }
-            cur_vis = await ai.call_agent(cur_input, 'writ-vis', 'visuals')
-        cur_vis = cur_vis[0]
-        if a.verbose: print(tm.do('previs'))
+        async def gen_vis_text():
+            cur_vis = filter_items(state.data["visuals"], fragment_number=idx)
+            if not cur_vis:
+                cur_input = {"fragment": cur_frag, "persona": persona, "fragment_number": idx}
+                if not (a.agent=='claude' and a.cld_cache):
+                    cur_input["global_settings"] = state.data["global_settings"]
+                cur_vis = await ai.call_agent(cur_input, 'writ-vis', 'visuals', **ctx_cache)
+            return cur_vis[0]
+
+        voc_result, cur_vis = await asyncio.gather(gen_voc(), gen_vis_text())
+        if a.verbose: print(tm.do('voc+vis'))
+
         # video
-        if do_media and voc_result and voc_result['status'] == 'success':
+        if do_media and voc_result and voc_result.get('status') == 'success':
             prompts = cur_vis['content']
             scene_data = {"global_actors": [persona]}  # for ref image lookup
             vis_result = await mediagen.gen_visual(fname, prompts, scene_data=scene_data)
@@ -120,10 +123,11 @@ async def gen_debate(idx, a, ai, state, mediagen=None, cur_vis_prev=[]):
     # Periodic persona update
     if idx > 0 and idx % a.updmsg == 0:
         upd_input = {
-            "global_settings": state.data["global_settings"],
             "personas": state.data["personas"],
             "recent_fragments": state.data["fragments"][-a.updmsg:]
         }
+        if not (a.agent=='claude' and a.cld_cache):
+            upd_input["global_settings"] = state.data["global_settings"]
         result = await ai.call_agent(upd_input, 'arch-upd', save=False)
         # Merge updated personas by name
         if "personas" in result:
@@ -152,7 +156,6 @@ async def main():
 
     save_cfg(a, a.out_dir)
     logfile = os.path.join(a.out_dir, 'log.json')
-    db_url = 'sqlite:///' + os.path.join(a.out_dir, 'sessions.db')
 
     state = StoryState(DEFAULT_DATA, logfile)
     if load_json and os.path.isfile(load_json):
@@ -167,13 +170,8 @@ async def main():
         await mediagen.init_vis()
 
     # Select agent backend
-    if 'adk' in a.agent:
-        from agt_adk import AgentADK
-        ai = AgentADK(state, a, a.ins_dir, agent_defs, db_url)
-    elif 'lms' in a.agent:
-        from agt_llm import AgentLLM
-        ai = AgentLLM(state, a, a.ins_dir)
-    print(tm.do('setup'))
+    ai = get_agent(state, a, agent_defs)
+    print(tm.do(f'.. {a.agent} setup'))
 
     # Get initial topic
     if a.in_txt:
@@ -187,8 +185,8 @@ async def main():
         await ai.call_agent(init_input, 'arch-init', 'personas')
         print(tm.do('arch_init'))
 
-        sp_f = ['f-270','f-306','f-294','f-364','f-245','f-311']
-        sp_m = ['m-230','m-317','m-229','m-236','m-262','m-286']
+        sp_f = ['f-245','f-311']
+        sp_m = ['m-262','m-286']
         pools = {'m': cycle(sp_m), 'f': cycle(sp_f)}
         for p in state.data["personas"]:
             p["speaker"] = next(pools.get(p.get("gender","m")[0].lower(), pools['m']))

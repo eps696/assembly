@@ -124,3 +124,16 @@ def print_dict(dict, file=None, path="", indent=''):
             else:
                 file.write('%s%s: %s \n' % (indent, str(k), str(dict[k])))
 
+def txt_clean(txt):
+    return ''.join(e for e in txt.replace(' ', '_') if (e.isalnum() or e in ['_','-']))
+
+def backups(out_dir, trees=None, files=None):
+    for dest_subpath, src_dir in (trees or {}).items():
+        dest_path = os.path.join(out_dir, dest_subpath)
+        os.makedirs(dest_path, exist_ok=True)
+        shutil.copytree(src_dir, dest_path, dirs_exist_ok=True)
+    for dest_subpath, file_list in (files or {}).items():
+        dest_path = os.path.join(out_dir, dest_subpath)
+        os.makedirs(dest_path, exist_ok=True)
+        for f in file_list:
+            shutil.copy2(f, os.path.join(dest_path, os.path.basename(f)))

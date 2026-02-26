@@ -51,8 +51,8 @@ class AgentADK:
             prompt_name = name.replace('_', '-')
             instruction = self.prompter.get_prompt(prompt_name)
             self.instructions[name] = instruction
-            tooldict = {'tools': [self.toolset[k] for k in feats.get('tools', []) if k in self.toolset]}
-            agents[name] = LlmAgent(name=name, description=feats['desc'], instruction=instruction, **tooldict, **adict)
+            tools = [self.toolset[t] for t in feats.get('tools', []) if t in self.toolset]
+            agents[name] = LlmAgent(name=name, description=feats['desc'], instruction=instruction, tools=tools, **adict)
         return agents
 
     def _create_runners(self):
@@ -69,25 +69,33 @@ class AgentADK:
             sess = await self.sess_service.get_session(app_name=app_name, session_id=sess_id, user_id=user_id)
         return sess
 
-    async def call_agent(self, inputs, run_id, checkout=None, save=True, evals=0):
+    async def call_agent(self, inputs, run_id, checkout=None, save=True, evals=0, loose_eval=False):
         """Call ADK agent with input data. evals > 0 enables QA evaluation loop."""
         runner_id = run_id.replace('-', '_')
         if evals == 0: evals = self.evals
         instruction = self.instructions.get(runner_id, '')
-        original = {k: v for k, v in inputs.items()}
+        orig_inputs = {k: v for k, v in inputs.items()}
+        feedbacks, best, best_score = [], None, -1
 
         for attempt in range(max(1, evals + 1)):
             result = await self._ask(runner_id, inputs, checkout)
-            if evals == 0 or attempt >= evals: 
+            if not evals: 
                 break
             # Evaluate with fresh session to ensure independence
-            eval_in = {"instruction": instruction, "inputs": original, "output": result}
+            eval_in = {"instruction": instruction, "output": result}
+            if not loose_eval: eval_in = {**eval_in, "inputs": orig_inputs}
             eval_result = await self._ask('eval', eval_in, fresh_session=True) or {}
-            if eval_result.get('evaluation', eval_result).get('status') == 'APPROVED': 
+            ev = eval_result.get('evaluation', eval_result)
+            score = ev.get('score', 0)
+            if score > best_score: best, best_score = result, score
+            if ev.get('status') == 'APPROVED' or attempt >= evals: 
                 break
-            inputs = {**original, 'previous_feedback': eval_result.get('evaluation', eval_result).get('feedback', '')}
-            if self.verbose: print(f".. {eval_result['evaluation']['feedback']}")
+            if fb := ev.get('feedback', ''):
+                feedbacks.append(f"[Attempt {attempt + 1}] {fb}")
+                inputs = {**orig_inputs, 'previous_feedbacks': '\n'.join(feedbacks)}
+                if self.verbose: print(f".. score {score}, {fb}")
 
+        if best is not None: result = best
         if save:
             await self.state.merge_data(result)
             await self.state.save()
