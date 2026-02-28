@@ -54,13 +54,13 @@ The LMStudio agent automatically recovers from malformed tool calls - common wit
 python src/author.py -txt ...
 
 # Generation with sound and visuals
-python src/author.py -vt runware -imod "bfl:5@1" -isz 1344-752 -vmod "bytedance:2@2" -vsz 864-480 -fps 24 -iref 8 ...
+python src/author.py -vt runware -imod flux -vmod seedprof -iref 8 ...
 
 # Resume from saved state and config
 python src/author.py -json _out/log.json -arg _out/config.txt 
 ```
 
-Hierarchical content generation for narrative storytelling (see `data/prompts/story`):
+Instructions for hierarchical storytelling content generation (see `data/prompts/story`):
 - **arch-init** - Initialize story structure, settings, and characters (+ auto-generate reference images for visual consistency)
 - **writ-chap** - Generate chapter outlines from the overall narrative arc
 - **writ-scen** - Create detailed scenes within each chapter
@@ -69,47 +69,38 @@ Hierarchical content generation for narrative storytelling (see `data/prompts/st
 - **writ-vis** - Generate visual descriptions (+ auto-create images (T2I), animate to video (I2V), mix with audio)
 - **arch-upd** - Update global story state based on generated content
 
-**Story Schema**
-```
-global_settings    - Title, genre, themes, narrative constraints
-global_actors      - Character definitions with visual descriptions
-chapters           - Chapter outlines and summaries
-scenes             - Scene breakdowns within chapters
-fragments          - Narrative prose fragments
-voices             - Voice-over scripts with speaker assignments
-visuals            - Visual descriptions and generation metadata
-```
 
 ### Chat Mode
 
 ```
-python src/chat.py ....
+# Text-only generation, fixed personas
+python src/chat.py -txt -pers fix ...
+
+# Generation with sound and visuals, evolving personas
+python src/author.py -pers evo -vt runware -t2v -vmod pruna ...
+
+# Resume from saved state and config
+python src/author.py -json _out/log.json -arg _out/config.txt 
 ```
 
-Linear multi-persona discussions (see `data/chat/story`):
+Instructions for linear multi-persona discussions (see `data/chat/story`):
 - **arch-init** - Create debate personas with distinct perspectives, styles, and voice profiles (+ auto-generate ref images)
 - **writ-frag** - Generate each persona's elaborated inner thoughts for their turn
 - **writ-voc** - Condense thoughts into short spoken remarks (+ auto-convert to speech via TTS)
 - **writ-vis** - Generate visual representation of the current speaker/moment (+ auto-create images/videos with audio)
 - **arch-upd** - Update persona states and debate direction based on progress
+- **curat-dir-anti** - Analyze debate and select provocative direction
+- **curat-pers-anti** - Select or create persona for controversial position
+- **curat-dir-evo** - Analyze debate and forecast next thought direction
+- **curat-pers-evo** - Select or create persona for thought direction
 
-**Chat Schema**
-
-```
-global_settings    - Topic, constraints, focus areas, debate rules
-personas           - Character definitions with roles, styles, and speaker IDs
-fragments          - Elaborated thoughts for each turn
-voices             - Condensed spoken remarks
-visuals            - Visual descriptions for each moment
-```
-
-See `data/schema-story.json` and `data/schema-chat.json` for complete structure.
+See JSON schemas in `data` folder for complete structure.
 Both workflows save state to `log.json` after each step, enabling resume from any point.
 
 ## Other Usage
 
 ```
-# Use local LLM
+# Use local LLM via LMStudio
 ... -a lms -tmod openai/gpt-oss-20b -lh localhost
 
 # Use OpenAI cloud
@@ -147,7 +138,6 @@ python src/readlog.py -i _out/log.json -o discussion.txt
 - `-fps` - Video framerate
 - `-iref/--img_refs` - Number of reference images for consistency
 
-- `--cld_cache` - Enable prompt caching (Claude backend)
 - `--use_thinking` - Enable extended thinking (Claude backend)
 - `--use_graph` - Use LangGraph execution (LangChain backend)
 - `--db_url` - Database URL for persistent sessions (ADK/LangGraph backends)

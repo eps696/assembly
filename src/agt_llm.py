@@ -43,10 +43,11 @@ class AgentLLM:
         self.client.top_p = 0.9
         self.client.set_model(args.txt_model)
 
-    async def call_agent(self, inputs, prompt_name, checkout=None, save=True, evals=0, loose_eval=False):
+    async def call_agent(self, inputs, prompt_name, checkout=None, context=None, save=True, evals=0, loose_eval=False):
         """Call LLM with prompt. evals > 0 enables QA evaluation loop."""
         if evals == 0: evals = self.evals
         instruction = self.prompter.get_prompt(prompt_name)
+        if context: inputs = {**context, **inputs}
         orig_inputs = {k: v for k, v in inputs.items()}
         feedbacks, best, best_score = [], None, -1
 

@@ -1,0 +1,53 @@
+{
+  "global_settings": {
+    "topic": "The discussion topic or thesis",
+    "constraints": "Debate guidelines and tone requirements",
+    "stop_cliches": "Phrases and expressions to avoid"
+  },
+  "personas": [
+    {
+      "name": "Persona name",
+      "gender": "f, m, or n",
+      "nature": "human/animal/machine/phenomenon/abstraction",
+      "role": "Principal role, features, and characteristics",
+      "look": "Visual appearance description for image generation",
+      "style": "Debate style and approach",
+      "strengths": "Key strengths of this persona",
+      "blindspots": "Limitations or blind spots",
+      "active": true
+    }
+  ],
+  "directions": [
+    {
+      "thought_seed": "Core idea or question to explore",
+      "provocation_mode": "hegelian/axis_rotation/polar/orthogonal/reductio/meta_critique/wildcard/steelman_destroy",
+      "dialectical_stage": "thesis/antithesis/synthesis/meta",
+      "rationale": "Why this direction is valuable now",
+      "targets": "What this provocation targets",
+      "desired_qualities": "What the next fragment should achieve",
+      "fragment_number": 1
+    }
+  ],
+  "provocation_modes": ["hegelian", "axis_rotation", "polar", "orthogonal", "reductio", "meta_critique", "wildcard", "steelman_destroy"],
+  "fragments": [
+    {
+      "fragment_number": 1,
+      "persona_name": "Persona name",
+      "content": "Elaborated inner thoughts for this turn - the detailed reasoning and argumentation before speaking"
+    }
+  ],
+  "voices": [
+    {
+      "fragment_number": 1,
+      "persona_name": "Persona name",
+      "content": "Condensed spoken remark - what the persona actually says aloud"
+    }
+  ],
+  "visuals": [
+    {
+      "fragment_number": 1,
+      "persona_name": "Persona name",
+      "content": "Visual description for image/video generation"
+    }
+  ]
+}

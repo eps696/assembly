@@ -5,6 +5,7 @@ import json
 import collections
 import argparse, ast
 import random
+from difflib import SequenceMatcher
 
 from eps import file_list
 
@@ -33,6 +34,17 @@ def rand_pick(alls, lastpick=None):
         newpick = random.choice(alls)
         if lastpick is None or newpick != lastpick or len(alls) == 1:
             return newpick
+
+def fuzzy_find(items, name, key='name', threshold=0.65):
+    """Find item in list of dicts by exact or fuzzy match on a string field"""
+    if not name: 
+        return None
+    name = name.lower()
+    for item in items:
+        item_val = item.get(key, '')
+        if item_val and SequenceMatcher(None, name, item_val.lower()).ratio() > threshold:
+            return item
+    return None
 
 def max_num(dicts, field):
     """Find max value for a field in list of dicts"""

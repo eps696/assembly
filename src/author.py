@@ -5,7 +5,7 @@ import asyncio
 import argparse
 
 from base import MediaGen, StoryState, DurationError, get_agent, load_docs, base_args
-from util import Tm, filter_items, max_num, fnexist, rand_pick, file_list, save_cfg
+from util import Tm, filter_items, max_num, fnexist, rand_pick, load_args, file_list, save_cfg
 
 def get_args(parser=None):
     """LMStudio-specific arguments"""
@@ -45,15 +45,16 @@ async def gen_chapter(chapter_num, idx, a, ai, state, mediagen=None):
     cur_vis_prev = []
     do_media = not a.txtonly and mediagen is not None
 
+    ctx_cache = {'context': {"global_settings": state.data["global_settings"]}} # update if settings updated??
+
     # chapter_num
     cur_chapters = filter_items(state.data["chapters"], chapter_number=chapter_num)
     if not cur_chapters:
         cur_input = {
-            "global_settings": state.data["global_settings"],
             "global_actors": state.data["global_actors"],
             "chapters": state.data["chapters"]
         }
-        cur_chapters = await ai.call_agent(cur_input, 'writ-chap', 'chapters')
+        cur_chapters = await ai.call_agent(cur_input, 'writ-chap', 'chapters', **ctx_cache)
     cur_chapter = cur_chapters[0]
     if a.verbose: print(tm.do('chap %d' % cur_chapter['chapter_number']))
 
@@ -61,11 +62,10 @@ async def gen_chapter(chapter_num, idx, a, ai, state, mediagen=None):
     cur_scenes = filter_items(state.data["scenes"], chapter_number=chapter_num)
     if not cur_scenes:
         cur_input = {
-            "global_settings": state.data["global_settings"],
             "global_actors": state.data["global_actors"],
             "chapter": cur_chapter
         }
-        cur_scenes = await ai.call_agent(cur_input, 'writ-scen', 'scenes')
+        cur_scenes = await ai.call_agent(cur_input, 'writ-scen', 'scenes', **ctx_cache)
     scene_count = max_num(cur_scenes, "scene_number")
     if a.verbose: print(tm.do('scenes %d' % scene_count))
 
@@ -119,13 +119,12 @@ async def gen_chapter(chapter_num, idx, a, ai, state, mediagen=None):
                 cur_vis = filter_items(state.data["visuals"], chapter_number=chapter_num, scene_number=scene_num, fragment_number=frag_num)
                 if not cur_vis:
                     cur_input = {
-                        "global_settings": state.data["global_settings"],
                         "global_actors": state.data["global_actors"],
                         "chapter": cur_chapter,
                         "scene": cur_scene,
                         "fragment": cur_fragment
                     }
-                    cur_vis = await ai.call_agent(cur_input, 'writ-vis', 'visuals')
+                    cur_vis = await ai.call_agent(cur_input, 'writ-vis', 'visuals', **ctx_cache)
                     if a.verbose: print(tm.do('previs'))
                 cur_vis = cur_vis[0]
 
@@ -168,12 +167,11 @@ async def gen_chapter(chapter_num, idx, a, ai, state, mediagen=None):
     next_chapter = filter_items(state.data["chapters"], chapter_number=chapter_num + 1)
     if not next_chapter:
         cur_input = {
-            "global_settings": state.data["global_settings"],
             "global_actors": state.data["global_actors"],
             "chapters": filter_items(state.data["chapters"], chapter_number=list(range(1, chapter_num + 1))),
             "scenes": cur_scenes
         }
-        result = await ai.call_agent(cur_input, 'arch-upd', save=False)
+        result = await ai.call_agent(cur_input, 'arch-upd', **ctx_cache, save=False)
         if "global_actors" in result:
             existing_names = {act.get("name") for act in state.data["global_actors"]}
             for actor in result["global_actors"]:
@@ -219,8 +217,8 @@ async def main():
         await state.save()
     else:
         init_input = {}
-        if a.doc_dir:
-            init_input["documents"] = load_docs(a.doc_dir, copy_dir=os.path.join(srcdir, 'docs'))
+        if a.docs:
+            init_input["documents"] = load_docs(a.docs, copy_dir=os.path.join(srcdir, 'docs'))
         if a.in_txt:
             init_input["initial_concept"] = open(a.in_txt, 'r', encoding="utf-8").read() if os.path.isfile(a.in_txt) else a.in_txt
         await ai.call_agent(init_input, 'arch-init', 'global_actors')

@@ -4,6 +4,7 @@ import base64
 import asyncio
 import concurrent.futures
 import requests
+import math
 from PIL import Image
 
 from runware import Runware, IImageInference, IVideoInference
@@ -38,6 +39,7 @@ SIZES = {
                   (704,1248), (1504,640), (1920,1088), (1664,1248), (1440,1440), (1248,1664), (1088,1920), (2176,928)},
     'seedpro': {(864,496),(752,560),(640,640),(560,752),(496,864),(992,432),(1280,720),(1112,834),(960,960),(834,1112),(720,1280),(1470,630)},
     'klingai': {(1920,1080), (1080,1920), (1080,1080)},
+    'pruna': {(1280,720),(720,1280),(960,720),(720,960),(1080,720),(720,1080),(720,720),(1440,1080),(1080,1440),(1620,1080),(1080,1620),(1080,1080)},
     'veo': {(1920,1080), (1280,720), (1080,1920)}
 }
 
@@ -94,6 +96,10 @@ IMAGE_CONFIG = {
 }
 
 VIDEO_CONFIG = {
+    'pruna': {'id': 'prunaai:p-video@0',
+        'desc': 'P-Video, 5¢ 10sec 720p-draft, 20¢ 10sec 720p, 10¢ 10sec 1080p-draft, 40¢ 10sec 1080p',
+        'duration': [2,10], 'fps': 24, 'size': (1280, 720), 'sizes': SIZES['pruna']
+    },
     'seedprof': {'id': 'bytedance:2@2',
         'desc': 'Seedance 1.0 Pro Fast, 8¢ 10sec 864x480, 16¢ 12sec 1248x704',
         'duration': [2,12], 'fps': 24, 'size': (1248, 704), 'sizes': SIZES['bytedance']
@@ -283,17 +289,17 @@ class RunwareGen:
 
     # ── Public API ─────────────────────────────────────────────────────────────
 
-    def gen_t2i(self, fname, prompt, wdir='tmp', ref_images=None, verbose=False):
+    def gen_img(self, fname, prompt, wdir='tmp', ref_images=None, verbose=False):
         """Text-to-image generation (sync interface)"""
-        return self._run_async(self._gen_t2i(fname, prompt, wdir, ref_images, verbose))
+        return self._run_async(self._gen_img(fname, prompt, wdir, ref_images, verbose))
 
-    def gen_i2v(self, fname, prompt, duration, images, fps=24, ref_images=None, wdir='tmp', verbose=False):
+    def gen_vid(self, fname, prompt, duration, images, fps=24, ref_images=None, wdir='tmp', verbose=False):
         """Image-to-video generation (sync interface)"""
-        return self._run_async(self._gen_i2v(fname, prompt, duration, images, fps, ref_images, wdir, verbose))
+        return self._run_async(self._gen_vid(fname, prompt, duration, images, fps, ref_images, wdir, verbose))
 
     # ── Async Implementations ──────────────────────────────────────────────────
 
-    async def _gen_t2i(self, fname, prompt, wdir, ref_images, verbose):
+    async def _gen_img(self, fname, prompt, wdir, ref_images, verbose):
         """Async T2I with retry"""
         out_dir = os.path.join(self.a.out_dir, wdir)
         os.makedirs(out_dir, exist_ok=True)
@@ -342,9 +348,9 @@ class RunwareGen:
                     try: await client.disconnect()
                     except: pass
 
-    async def _gen_i2v(self, fname, prompt, duration, images, fps, ref_images, wdir, verbose):
+    async def _gen_vid(self, fname, prompt, duration, images, fps, ref_images, wdir, verbose):
         """Async I2V with retry"""
-        duration = min(self.vid_cfg['duration'][1], max(self.vid_cfg['duration'][0], int(duration)))
+        duration = min(self.vid_cfg['duration'][1], max(self.vid_cfg['duration'][0], math.ceil(duration)))
         try:
             w, h = map(int, self.a.vid_size.split('-'))
         except:

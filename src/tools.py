@@ -8,12 +8,23 @@ from urllib.parse import urlparse, urlunparse
 import markdownify
 import readabilipy.simple_json
 from protego import Protego
+import concurrent.futures
 import inspect
 from typing import get_type_hints
 from functools import wraps
 
 # Tool registry: name → {fn, openai, claude}
 _tools = {}
+
+def _run_async(coro):
+    """Run async coroutine from sync context, safe inside running event loops."""
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)  # no loop running, safe to use asyncio.run
+    # loop is running — schedule on it and wait from a thread
+    with concurrent.futures.ThreadPoolExecutor(1) as pool:
+        return pool.submit(asyncio.run, coro).result()
 
 def tool(func):
     """Register function as agentic tool, auto-generate OpenAI and Claude schemas from signature/docstring"""
@@ -144,7 +155,7 @@ def search(query: str, count: int = 10, offset: int = 0): # max 20, offset for p
     offset: Pagination offset (max 9, default 0)
     """
     try:
-        formatted_results = asyncio.run(search_async(query=query, count=int_(count, 10), offset=int_(offset, 0)))
+        formatted_results = _run_async(search_async(query=query, count=int_(count, 10), offset=int_(offset, 0)))
         return {"status": "success", "content": formatted_results}
     except Exception as e:
         # return {"status": "error", "message": str(e)}
@@ -260,7 +271,7 @@ def fetch_url_content(url: str, max_length: int = 100000, start_index: int = 0, 
     check_robots: Check robots.txt before fetching (default: false)
     """
     try:
-        return asyncio.run(fetch_url_content_async(url=url, max_length=int_(max_length, 100000), start_index=int_(start_index, 0), raw=bool_(raw), check_robots=bool_(check_robots)))
+        return _run_async(fetch_url_content_async(url=url, max_length=int_(max_length, 100000), start_index=int_(start_index, 0), raw=bool_(raw), check_robots=bool_(check_robots)))
     except Exception as e:
         return {"status": "error", "message": str(e)}
 

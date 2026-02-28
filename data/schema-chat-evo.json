@@ -2,22 +2,28 @@
   "global_settings": {
     "topic": "The discussion topic or thesis",
     "constraints": "Debate guidelines and tone requirements",
-    "stop_cliches": ["phrases to avoid", "banned expressions"],
-    "focus_areas": [
-      "Specific aspects to explore",
-      "Questions to address"
-    ]
+    "stop_cliches": "Phrases and expressions to avoid"
   },
   "personas": [
     {
       "name": "Persona name",
-      "gender": "f or m",
+      "gender": "f, m, or n",
+      "nature": "human/animal/machine/phenomenon/abstraction",
       "role": "Principal role, features, and characteristics",
       "look": "Visual appearance description for image generation",
       "style": "Debate style and approach",
-      "strengths": ["strength1", "strength2"],
-      "blindspots": ["limitation1", "limitation2"],
-      "speaker": "TTS speaker ID (e.g., f-227)"
+      "strengths": "Key strengths of this persona",
+      "blindspots": "Limitations or blind spots",
+      "active": true
+    }
+  ],
+  "directions": [
+    {
+      "thought_seed": "Core idea or question to explore",
+      "direction_type": "depth/bridge/reframe/concrete/escalate/wildcard",
+      "rationale": "Why this direction is valuable now",
+      "desired_qualities": "What the next fragment should achieve",
+      "fragment_number": 1
     }
   ],
   "fragments": [

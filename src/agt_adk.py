@@ -69,11 +69,12 @@ class AgentADK:
             sess = await self.sess_service.get_session(app_name=app_name, session_id=sess_id, user_id=user_id)
         return sess
 
-    async def call_agent(self, inputs, run_id, checkout=None, save=True, evals=0, loose_eval=False):
+    async def call_agent(self, inputs, run_id, checkout=None, context=None, save=True, evals=0, loose_eval=False):
         """Call ADK agent with input data. evals > 0 enables QA evaluation loop."""
         runner_id = run_id.replace('-', '_')
         if evals == 0: evals = self.evals
         instruction = self.instructions.get(runner_id, '')
+        if context: inputs = {**context, **inputs}
         orig_inputs = {k: v for k, v in inputs.items()}
         feedbacks, best, best_score = [], None, -1
 

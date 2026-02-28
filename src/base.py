@@ -41,11 +41,12 @@ def base_args(parser=None):
     parser.add_argument('-sndd', '--sound_dir', default='models/mmaudio', help='Sound models directory')
     # vis gen
     parser.add_argument('-tmod', '--txt_model', default=None, help="LLM name")
-    parser.add_argument('-imod', '--img_model', default='bfl:5@1', help="Generative model for images")
-    parser.add_argument('-vmod', '--vid_model', default='bytedance:2@2', help="Generative model for video")
+    parser.add_argument('-imod', '--img_model', default=None, help="Generative model for images")
+    parser.add_argument('-vmod', '--vid_model', default=None, help="Generative model for video")
     parser.add_argument('-iref', '--img_refs',  default=0, type=int, help='Use N reference image[s] for consistency')
-    parser.add_argument('-isz', '--img_size', default='1344-752', help="image size, multiple of 8")
-    parser.add_argument('-vsz', '--vid_size', default='864-480', help="video size, multiple of 32")
+    parser.add_argument('-isz', '--img_size', default=None, help="image size, multiple of 8")
+    parser.add_argument('-vsz', '--vid_size', default=None, help="video size, multiple of 32")
+    parser.add_argument('-t2v',  '--t2v',   action='store_true', help="Generate text-to-video directly (lower    quality!)")
     parser.add_argument('-fps','--fps',     default=24, type=int)
     parser.add_argument('-v',  '--verbose', action='store_true')
     # server
@@ -55,7 +56,6 @@ def base_args(parser=None):
     parser.add_argument('--poll_timeout', default=300, type=int)
     # Backend-specific args (each backend uses what it needs)
     parser.add_argument('--db_url', default=None, help='[ADK] Database URL')
-    parser.add_argument('--cld_cache', default=True, action='store_true', help='[Claude] Prompt caching')
     parser.add_argument('--use_thinking', default=False, action='store_true', help='[Claude] Extended thinking')
     parser.add_argument('--thinking_budget', default=5000, type=int, help='[Claude] Thinking budget')
     parser.add_argument('--use_graph',  action='store_true', help='[LangChain] Use LangChain message loop or LangGraph StateGraph with checkpointer')
@@ -244,7 +244,7 @@ def mix_img_wav(img, wav, out_path, size, bitrate=None, fps=None, tts_sr=TTS_SR,
 
 def mix_mov_wav(mov, wav, out_path, tts_sr=TTS_SR, timeout=120):
     """Add audio to video using ffmpeg"""
-    command = ['ffmpeg', '-y', '-v', 'error', '-i', mov, '-i', wav,
+    command = ['ffmpeg', '-y', '-v', 'error', '-i', mov, '-i', wav, '-map', '0:v', '-map', '1:a', 
                '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-ar', str(tts_sr), '-ac', '1', out_path]
     try:
         result = subprocess.run(command, capture_output=True, timeout=timeout, text=True)
@@ -275,7 +275,7 @@ class MediaGen:
             self.tts = ChatterBox(a.tts_dir)
             self.mma = MMAud(model_dir=a.sound_dir, model_name='large_44k_v2')
             self.rw = RunwareGen(a)
-            print("Media generation initialized")
+            print("..media gen ready")
         except Exception as e:
             print(f"Warning: Media generation init failed: {e}")
 
@@ -310,7 +310,7 @@ class MediaGen:
             ref_prompt = f"Establishing shot of {name}: {look}. Clear architectural features, distinctive environment, consistent lighting."
 
         try:
-            ref_img = await asyncio.to_thread(self.rw.gen_t2i, fname, ref_prompt, basename(ref_dir))
+            ref_img = await asyncio.to_thread(self.rw.gen_img, fname, ref_prompt, basename(ref_dir))
             self.refs[name] = ref_img
             print(f" Ref for {type} {name} new")
         except Censored as e:
@@ -367,7 +367,7 @@ class MediaGen:
                 raise
 
             duration = librosa.get_duration(path=wav_path)
-            cfg = self.rw._get_vid_config()
+            cfg = VIDEO_CONFIG[self.a.vid_model]
             min_dur, max_dur = cfg['duration']
             if not (min_dur <= duration <= max_dur):
                 os.remove(wav_path)  # Clean up invalid audio
@@ -391,17 +391,20 @@ class MediaGen:
             if scene_refs:
                 ref_dict['ref_images'] = scene_refs[:self.a.img_refs]
         try:
-            try:
-                img_path = await asyncio.to_thread(self.rw.gen_t2i, fname, txt_vis, **ref_dict)
-            except Censored as e:
-                return {"status": "censored", "message": str(e), "stage": "t2i"}
-            except Exception as e:
-                print(f"!! T2I failed, skipping: {e}")
-                return {"status": "error", "message": str(e), "stage": "t2i"}
+            if self.a.t2v:
+                img_path = None
+            else:
+                try:
+                    img_path = await asyncio.to_thread(self.rw.gen_img, fname, txt_vis, **ref_dict)
+                except Censored as e:
+                    return {"status": "censored", "message": str(e), "stage": "t2i"}
+                except Exception as e:
+                    print(f"!! T2I failed, skipping: {e}")
+                    return {"status": "error", "message": str(e), "stage": "t2i"}
 
             duration = librosa.get_duration(path=wav_path)
             try:
-                mov_path = await asyncio.to_thread(self.rw.gen_i2v, fname, txt_vis, duration, [img_path])
+                mov_path = await asyncio.to_thread(self.rw.gen_vid, fname, txt_vis, duration, [img_path])
                 output = {"status": "success", "video_path": out_path}
             except Censored as e:
                 mov_path = None
@@ -413,6 +416,8 @@ class MediaGen:
 
             if mov_path and mov_path.endswith('.mp4'):
                 await asyncio.to_thread(mix_mov_wav, mov_path, wav_path, out_path)
+            elif self.a.t2v:
+                print(".. No visual media generated ..")
             else:
                 img_for_video = img_path['path'] if isinstance(img_path, dict) else img_path
                 await asyncio.to_thread(mix_img_wav, img_for_video, wav_path, out_path, size=self.a.vid_size, fps=self.a.fps)
